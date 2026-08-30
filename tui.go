@@ -24,15 +24,15 @@ const (
 
 func RunTUI(ctx context.Context, node *Node, stop context.CancelFunc, input io.Reader, output io.Writer) error {
 	commands := make(chan string)
+	scanErrors := make(chan error, 1)
 	go func() {
 		scanner := bufio.NewScanner(input)
 		for scanner.Scan() {
 			commands <- scanner.Text()
 		}
+		scanErrors <- scanner.Err()
 		close(commands)
 	}()
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
 	message := "Node ready. Type help to see commands."
 	for {
 		renderTUI(output, node, message)
@@ -40,11 +40,12 @@ func RunTUI(ctx context.Context, node *Node, stop context.CancelFunc, input io.R
 		case <-ctx.Done():
 			fmt.Fprint(output, ansiReset, "\n")
 			return nil
-		case <-ticker.C:
-			message = "Live state refreshed."
 		case line, ok := <-commands:
 			if !ok {
 				stop()
+				if err := <-scanErrors; err != nil {
+					return fmt.Errorf("read command: %w", err)
+				}
 				return nil
 			}
 			var quit bool
@@ -105,18 +106,23 @@ func renderTUI(w io.Writer, node *Node, message string) {
 }
 
 func runTUICommand(ctx context.Context, node *Node, line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(strings.ToLower(line), "boxnet>") {
+		line = strings.TrimSpace(line[len("boxnet>"):])
+	}
+	command := strings.ToLower(line)
 	switch {
-	case line == "", line == "refresh", line == "r":
+	case command == "", command == "refresh", command == "r":
 		return "State refreshed.", false
-	case line == "help", line == "h":
+	case command == "help", command == "h", command == "?":
 		return "Commands: add PATH · save NUMBER DESTINATION · sync · refresh · quit", false
-	case line == "sync", line == "s":
+	case command == "sync", command == "s":
 		go node.syncAll(ctx)
 		return "Peer synchronization started.", false
-	case line == "quit", line == "q", line == "exit":
+	case command == "quit", command == "q", command == "exit":
 		return "", true
-	case strings.HasPrefix(line, "add "):
-		path := strings.TrimSpace(strings.TrimPrefix(line, "add "))
+	case strings.HasPrefix(command, "add "):
+		path := strings.TrimSpace(line[4:])
 		record, added, err := publishLocal(node, path)
 		if err != nil {
 			return "Could not add file: " + err.Error(), false
@@ -125,8 +131,8 @@ func runTUICommand(ctx context.Context, node *Node, line string) (string, bool) 
 			return record.Name + " is already stored on this node.", false
 		}
 		return "Published " + record.Name + ".", false
-	case strings.HasPrefix(line, "save "):
-		parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(line, "save ")), " ", 2)
+	case strings.HasPrefix(command, "save "):
+		parts := strings.SplitN(strings.TrimSpace(line[5:]), " ", 2)
 		if len(parts) != 2 {
 			return "Usage: save NUMBER DESTINATION", false
 		}

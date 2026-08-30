@@ -59,3 +59,16 @@ func TestTUIHelpers(t *testing.T) {
 		t.Fatalf("truncate()=%q", got)
 	}
 }
+
+func TestTUICommandsAreTolerant(t *testing.T) {
+	node, err := NewNode("Terminal Node", "http://localhost:8080", t.TempDir(), 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"help", "HELP", "?", "boxnet> help"} {
+		message, quit := runTUICommand(context.Background(), node, command)
+		if quit || !strings.Contains(message, "Commands: add PATH") {
+			t.Fatalf("command %q returned message=%q quit=%v", command, message, quit)
+		}
+	}
+}

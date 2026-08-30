@@ -44,7 +44,7 @@ go run . -ui web
 go run . -ui none
 ```
 
-The terminal interface refreshes every five seconds and accepts these commands:
+The terminal interface redraws after each command so it never interrupts a line while you are typing. Press Enter or use `refresh` to show the latest background state. It accepts these commands:
 
 | Command | Action |
 | --- | --- |
