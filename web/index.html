@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0c0d0f">
+  <title>Boxnet</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Boxnet home">
+        <span class="brand-mark"><span></span><span></span><span></span></span>
+        <span>boxnet</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a class="nav-item active" href="#overview"><svg><use href="#i-grid"/></svg>Overview</a>
+        <a class="nav-item" href="#files"><svg><use href="#i-file"/></svg>Files <span class="nav-count" id="nav-file-count">0</span></a>
+        <a class="nav-item" href="#peers"><svg><use href="#i-nodes"/></svg>Peers <span class="nav-count" id="nav-peer-count">0</span></a>
+        <a class="nav-item" href="#activity"><svg><use href="#i-activity"/></svg>Activity</a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="node-mini">
+          <span class="status-dot" id="side-dot"></span>
+          <div><strong id="side-name">Loading node</strong><span id="side-status">Connecting…</span></div>
+        </div>
+        <p>Local-first mesh<br><span id="node-id-short">—</span></p>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button class="mobile-menu" aria-label="Open navigation"><svg><use href="#i-menu"/></svg></button>
+        <div class="crumb"><span>Network</span><b>/</b><strong id="crumb-name">This node</strong></div>
+        <div class="top-actions">
+          <button class="icon-button" id="refresh-button" aria-label="Refresh data" title="Refresh"><svg><use href="#i-refresh"/></svg></button>
+          <button class="primary-button" data-open-upload><svg><use href="#i-upload"/></svg>Publish file</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="page-heading" id="overview">
+          <div>
+            <div class="eyebrow">LOCAL MESH</div>
+            <h1>Network overview</h1>
+            <p>Files stay available across the computers you trust.</p>
+          </div>
+          <div class="health-pill loading" id="health-pill"><span></span><b>Connecting</b></div>
+        </section>
+
+        <section class="metrics" aria-label="Network metrics">
+          <article><div class="metric-label">Files available <span title="Unique files stored on this node">?</span></div><strong id="metric-files">—</strong><small id="metric-size">Calculating storage</small></article>
+          <article><div class="metric-label">Peers online <span title="Nodes seen in the last 12 seconds">?</span></div><strong id="metric-peers">—</strong><small id="metric-known">Discovering network</small></article>
+          <article><div class="metric-label">Replica coverage <span title="Available nodes compared with your replica target">?</span></div><strong id="metric-coverage">—</strong><small id="metric-target">Target not loaded</small></article>
+          <article><div class="metric-label">Node uptime <span title="Time since this node started">?</span></div><strong id="metric-uptime">—</strong><small>Operating independently</small></article>
+        </section>
+
+        <section class="notice" id="network-notice">
+          <div class="notice-icon"><svg><use href="#i-shield"/></svg></div>
+          <div><strong id="notice-title">Establishing local network</strong><p id="notice-copy">Looking for nearby nodes and checking replica availability.</p></div>
+          <button class="text-button" id="sync-button">Sync now</button>
+        </section>
+
+        <section class="section" id="files">
+          <div class="section-header">
+            <div><h2>Shared files</h2><p>Content available from this node</p></div>
+            <div class="section-actions">
+              <label class="search"><svg><use href="#i-search"/></svg><input id="file-search" type="search" placeholder="Filter files…" aria-label="Filter files"></label>
+              <button class="secondary-button" data-open-upload><svg><use href="#i-plus"/></svg>Add file</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Size</th><th>Replicas</th><th>Added</th><th><span class="sr-only">Actions</span></th></tr></thead>
+              <tbody id="file-list"><tr class="skeleton-row"><td colspan="5"><span></span></td></tr><tr class="skeleton-row"><td colspan="5"><span></span></td></tr></tbody>
+            </table>
+            <div class="empty-state" id="file-empty" hidden>
+              <div class="empty-icon"><svg><use href="#i-file-plus"/></svg></div>
+              <h3>No files published yet</h3><p>Add the first file to this mesh. It will be stored locally and copied to peers when they are available.</p>
+              <button class="primary-button" data-open-upload>Publish your first file</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="lower-grid">
+          <section class="section" id="peers">
+            <div class="section-header"><div><h2>Peers</h2><p>Computers in this mesh</p></div><span class="section-badge" id="peer-badge">0 online</span></div>
+            <div class="peer-list" id="peer-list"><div class="inline-loading">Discovering nearby nodes…</div></div>
+          </section>
+          <section class="section" id="activity">
+            <div class="section-header"><div><h2>Recent activity</h2><p>Changes on this node</p></div></div>
+            <div class="activity-list" id="activity-list"><div class="inline-loading">Loading activity…</div></div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="upload-dialog">
+    <form method="dialog" class="dialog-card" id="upload-form">
+      <div class="dialog-header"><div><h2>Publish a file</h2><p>Add content to this local mesh.</p></div><button class="icon-button" value="cancel" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+      <label class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" name="file" required>
+        <span class="drop-icon"><svg><use href="#i-upload"/></svg></span>
+        <strong id="drop-title">Drop a file here or choose one</strong>
+        <span id="drop-copy">Up to 1 GB · verified with SHA-256</span>
+      </label>
+      <div class="upload-progress" id="upload-progress" hidden><div><span>Publishing</span><b id="progress-value">0%</b></div><progress max="100" value="0"></progress></div>
+      <div class="dialog-actions"><button class="secondary-button" value="cancel">Cancel</button><button class="primary-button" id="publish-button" type="submit">Publish file</button></div>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-nodes" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><path d="m10 7-3.5 8M14 7l3.5 8M8 18h8"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.5-7 5 14 2.5-7h4"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18 10a7 7 0 0 0-12-3l-2 4M6 14a7 7 0 0 0 12 3l2-4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 15v5h16v-5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/><path d="m9 12 2 2 4-5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6zM14 2v5h5M9 14h6M12 11v6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+  </svg>
+  <script src="/app.js"></script>
+</body>
+</html>
+
