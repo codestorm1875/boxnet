@@ -26,9 +26,13 @@ type Peer struct {
 }
 
 type Manifest struct {
-	NodeID string       `json:"nodeId"`
-	Name   string       `json:"name"`
-	Files  []FileRecord `json:"files"`
+	NodeID     string       `json:"nodeId"`
+	Name       string       `json:"name"`
+	Files      []FileRecord `json:"files"`
+	PublicKey  string       `json:"publicKey"`
+	Membership string       `json:"membership"`
+	Timestamp  int64        `json:"timestamp"`
+	Signature  string       `json:"signature"`
 }
 
 type Event struct {
@@ -53,8 +57,12 @@ type Status struct {
 }
 
 type announcement struct {
-	Protocol string `json:"protocol"`
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Address  string `json:"address"`
+	Protocol   string `json:"protocol"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Address    string `json:"address"`
+	PublicKey  string `json:"publicKey"`
+	Membership string `json:"membership"`
+	Timestamp  int64  `json:"timestamp"`
+	Signature  string `json:"signature"`
 }

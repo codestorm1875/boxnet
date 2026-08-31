@@ -1,4 +1,5 @@
 const state = { status: null, files: [], peers: [], events: [], query: '' };
+let adminToken = sessionStorage.getItem('boxnet-token') || '';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -25,8 +26,9 @@ function uptime(startedAt) {
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 async function api(path, options) {
+  options = options || {}; options.headers = {...(options.headers || {}), Authorization: `Bearer ${adminToken}`};
   const response = await fetch(path, options);
-  if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || `Request failed (${response.status})`); }
+  if (!response.ok) { const body = await response.json().catch(() => ({})); const error = new Error(body.error || `Request failed (${response.status})`); error.status = response.status; throw error; }
   return response.json();
 }
 async function refresh(showFeedback = false) {
@@ -36,7 +38,8 @@ async function refresh(showFeedback = false) {
     Object.assign(state, { status, files, peers, events }); render();
     if (showFeedback) toast('Network state refreshed');
   } catch (error) {
-    setDisconnected(); if (showFeedback) toast(error.message, true);
+    if (error.status === 401) showLogin(); else setDisconnected();
+    if (showFeedback && error.status !== 401) toast(error.message, true);
   } finally { $('#refresh-button').classList.remove('spinning'); }
 }
 function render() {
@@ -59,7 +62,7 @@ function renderFiles() {
   const list = state.files.filter(file => file.name.toLowerCase().includes(state.query));
   $('#file-empty').hidden = state.files.length !== 0;
   const tbody = $('#file-list'); tbody.hidden = state.files.length === 0;
-  tbody.innerHTML = list.length ? list.map(file => `<tr><td><div class="file-cell"><span class="file-icon"><svg><use href="#i-file"/></svg></span><span class="file-meta"><strong>${escapeHtml(file.name)}</strong><span>${file.hash.slice(0,12)}</span></span></div></td><td>${bytes(file.size)}</td><td><div class="replica"><span class="replica-dots">${Array.from({length:state.status.replicationFactor},(_,i)=>`<i class="${i<file.replicas?'on':''}"></i>`).join('')}</span>${file.replicas}/${state.status.replicationFactor}</div></td><td title="${escapeHtml(new Date(file.createdAt).toLocaleString())}">${ago(file.createdAt)}</td><td><a class="download-link" href="/api/files/${file.hash}/download" aria-label="Download ${escapeHtml(file.name)}" title="Download"><svg><use href="#i-download"/></svg></a></td></tr>`).join('') : `<tr><td colspan="5"><div class="empty-inline">No files match “${escapeHtml(state.query)}”</div></td></tr>`;
+  tbody.innerHTML = list.length ? list.map(file => `<tr><td><div class="file-cell"><span class="file-icon"><svg><use href="#i-file"/></svg></span><span class="file-meta"><strong>${escapeHtml(file.name)}</strong><span>${file.hash.slice(0,12)}</span></span></div></td><td>${bytes(file.size)}</td><td><div class="replica"><span class="replica-dots">${Array.from({length:state.status.replicationFactor},(_,i)=>`<i class="${i<file.replicas?'on':''}"></i>`).join('')}</span>${file.replicas}/${state.status.replicationFactor}</div></td><td title="${escapeHtml(new Date(file.createdAt).toLocaleString())}">${ago(file.createdAt)}</td><td><button class="download-link" data-download="${file.hash}" data-name="${escapeHtml(file.name)}" aria-label="Download ${escapeHtml(file.name)}" title="Download"><svg><use href="#i-download"/></svg></button></td></tr>`).join('') : `<tr><td colspan="5"><div class="empty-inline">No files match “${escapeHtml(state.query)}”</div></td></tr>`;
 }
 function renderPeers() {
   const online = state.peers.filter(p => p.online).length; $('#peer-badge').textContent = `${online} online`;
@@ -76,6 +79,10 @@ function toast(message, error = false) {
   const el = $('#toast'); el.textContent = message; el.className = `toast show${error?' error':''}`;
   clearTimeout(toast.timer); toast.timer = setTimeout(() => el.className = 'toast', 3200);
 }
+function showLogin() {
+  const login = $('#login-dialog'); if (!login.open) login.showModal();
+  setTimeout(() => $('#login-token').focus(), 0);
+}
 
 const dialog = $('#upload-dialog'), input = $('#file-input'), zone = $('#drop-zone');
 $$('[data-open-upload]').forEach(button => button.addEventListener('click', () => dialog.showModal()));
@@ -90,7 +97,22 @@ $('#upload-form').addEventListener('submit', event => {
   xhr.upload.onprogress = event => { if (event.lengthComputable) { const value = Math.round(event.loaded/event.total*100); $('progress').value = value; $('#progress-value').textContent = `${value}%`; } };
   xhr.onload = async () => { $('#publish-button').disabled = false; if (xhr.status >= 200 && xhr.status < 300) { dialog.close(); input.value = ''; $('#drop-title').textContent = 'Drop a file here or choose one'; $('#drop-copy').textContent = 'Up to 1 GB · verified with SHA-256'; $('#upload-progress').hidden = true; toast('File published to the mesh'); await refresh(); } else { let message='Upload failed'; try{message=JSON.parse(xhr.responseText).error||message}catch{} toast(message,true); } };
   xhr.onerror = () => { $('#publish-button').disabled = false; toast('Upload failed: node unreachable', true); };
-  xhr.open('POST','/api/files'); xhr.send(data);
+  xhr.open('POST','/api/files'); xhr.setRequestHeader('Authorization', `Bearer ${adminToken}`); xhr.send(data);
+});
+$('#login-dialog').addEventListener('cancel', event => event.preventDefault());
+$('#login-form').addEventListener('submit', async event => {
+  event.preventDefault(); const candidate = $('#login-token').value.trim(); if (!candidate) return;
+  adminToken = candidate;
+  try { await api('/api/status'); sessionStorage.setItem('boxnet-token', adminToken); $('#login-token').value = ''; $('#login-dialog').close(); toast('Dashboard unlocked'); await refresh(); }
+  catch (error) { adminToken = ''; sessionStorage.removeItem('boxnet-token'); toast(error.status === 401 ? 'That dashboard token is not valid' : error.message, true); }
+});
+$('#file-list').addEventListener('click', async event => {
+  const button = event.target.closest('[data-download]'); if (!button) return;
+  try {
+    const response = await fetch(`/api/files/${button.dataset.download}/download`, {headers:{Authorization:`Bearer ${adminToken}`}});
+    if (!response.ok) throw new Error('Download failed');
+    const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = url; link.download = button.dataset.name; link.click(); URL.revokeObjectURL(url);
+  } catch (error) { toast(error.message, true); }
 });
 $('#refresh-button').addEventListener('click', () => refresh(true));
 $('#sync-button').addEventListener('click', async () => { try { await api('/api/sync',{method:'POST'}); toast('Peer synchronization started'); setTimeout(()=>refresh(),1000); } catch(error){toast(error.message,true)} });

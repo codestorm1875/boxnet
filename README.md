@@ -26,9 +26,14 @@ go run . \
 
 Open `http://localhost:8080`. Replace `192.168.1.20` with the machine's LAN address so other computers can reach it.
 
+On first start, the terminal prints two secrets:
+
+- **Dashboard token:** enter this in the GUI unlock screen. It is also stored in `data/living-room/admin.token` with owner-only permissions.
+- **Mesh invitation:** transfer this once, through a trusted channel, to each computer that should join the mesh.
+
 ## GUI and TUI
 
-The same binary now supports four interface modes:
+The same binary supports four interface modes:
 
 ```bash
 # Start the node and open its graphical dashboard in your default browser
@@ -44,13 +49,15 @@ go run . -ui web
 go run . -ui none
 ```
 
-The terminal interface redraws after each command so it never interrupts a line while you are typing. Press Enter or use `refresh` to show the latest background state. It accepts these commands:
+The terminal interface accepts these commands:
 
 | Command | Action |
 | --- | --- |
 | `add /path/to/file` | Publish a local file to the mesh |
 | `save 1 ./copy.ext` | Export file number 1 without overwriting an existing file |
 | `sync` or `s` | Start peer reconciliation immediately |
+| `invite` | Show the secret invitation used to add a trusted node |
+| `token` | Show the token used to unlock this node's web dashboard |
 | `refresh` or `r` | Redraw current state |
 | `help` or `h` | Show available commands |
 | `quit` or `q` | Gracefully stop the node |
@@ -60,11 +67,17 @@ The terminal interface redraws after each command so it never interrupts a line 
 Run these in separate terminals:
 
 ```bash
-go run . -name "Alpha" -listen :8080 -advertise http://localhost:8080 -data ./data/alpha
+go run . -name "Alpha" -listen :8080 -advertise http://127.0.0.1:8080 -data ./data/alpha
+```
+
+Copy Alpha's printed `boxnet1.…` invitation into a file named `alpha.invite`, then restrict it:
+
+```bash
+chmod 600 alpha.invite
 ```
 
 ```bash
-go run . -name "Beta" -listen :8081 -advertise http://localhost:8081 -data ./data/beta -peers http://localhost:8080
+go run . -name "Beta" -listen :8081 -advertise http://127.0.0.1:8081 -data ./data/beta -peers http://127.0.0.1:8080 -join-file ./alpha.invite
 ```
 
 Open `http://localhost:8080` and `http://localhost:8081`. Publish a file on Alpha; Beta will pull it during the next synchronization cycle. Stop Alpha and the file remains downloadable from Beta. Start Alpha again and both nodes reconcile automatically.
@@ -87,15 +100,23 @@ The binary serves both the API and dashboard. Useful flags:
 | `-replicas` | `2` | Desired availability target shown by the dashboard |
 | `-peers` | empty | Comma-separated peer URLs used as discovery seeds |
 | `-ui` | `web` | Interface mode: `web`, `browser`, `tui`, or `none` |
+| `-join` | empty | Mesh invitation; convenient but may remain in shell history |
+| `-join-file` | empty | Preferred path to an owner-readable invitation file |
+| `-show-invite` | `false` | Print the existing mesh invitation |
+| `-max-upload` | 1 GiB | Maximum bytes accepted for one file |
+| `-max-storage` | 10 GiB | Maximum bytes retained by this node |
 
 ## Protocol overview
 
-1. A node broadcasts a small `boxnet/1` presence message to `239.255.67.89:9797` every three seconds.
-2. Peers exchange manifests over `GET /api/manifest`.
-3. A node requests any missing blob through `GET /api/blobs/{sha256}`.
-4. The received bytes are hashed before they are committed to local storage.
-5. If a node disappears, local files remain available. When connectivity returns, manifest reconciliation resumes.
+1. A node broadcasts a signed `boxnet/2` presence message to `239.255.67.89:9797` every three seconds.
+2. Nodes validate the sender address, Ed25519 identity, mesh-membership proof, timestamp, and signature.
+3. Authorized peers exchange signed manifests over authenticated `GET /api/manifest` requests. Timestamped, one-use nonces prevent request replay.
+4. A node requests missing blobs through authenticated `GET /api/blobs/{sha256}` calls.
+5. The received bytes are hashed before they are committed to local storage.
+6. If a node disappears, local files remain available. When connectivity returns, authenticated manifest reconciliation resumes.
 
 ## Trust and scope
 
-This MVP is designed for a trusted private LAN. Its HTTP API has no authentication or transport encryption, so do not expose it directly to the public internet. A production evolution should add signed node identities, encrypted transport, explicit mesh invitations, storage quotas, tombstones, and configurable replica placement.
+Boxnet now authenticates dashboard operations, gives every node a persistent Ed25519 identity, admits peers through a secret invitation, signs discovery/manifests/peer requests, rejects replayed requests and redirects, limits storage and concurrent transfers, and hardens browser responses.
+
+Transport is **not encrypted yet**. A device capable of observing LAN traffic can see filenames and file contents, and could capture a dashboard token. Keep Boxnet on a trusted private LAN and do not expose it directly to the public internet. The next security milestone is TLS 1.3 with mutually authenticated peer certificates, followed by encrypted-at-rest blobs and revocable membership.

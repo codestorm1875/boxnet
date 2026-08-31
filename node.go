@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -20,44 +20,49 @@ type Node struct {
 	Replication int
 	startedAt   time.Time
 	client      *http.Client
+	privateKey  ed25519.PrivateKey
+	publicKey   ed25519.PublicKey
+	meshKey     []byte
+	adminToken  string
+	newMesh     bool
+	MaxUpload   int64
+	MaxStorage  int64
 	mu          sync.RWMutex
 	peers       map[string]Peer
 	peerFiles   map[string]map[string]bool
 	events      []Event
 	seeds       []string
+	seenNonces  map[string]time.Time
+	transfers   chan struct{}
 }
 
-func NewNode(name, address, dataDir string, replication int, seeds []string) (*Node, error) {
+func NewNode(name, address, dataDir string, replication int, seeds []string, invite ...string) (*Node, error) {
 	store, err := OpenStore(dataDir)
 	if err != nil {
 		return nil, err
 	}
-	id, err := loadIdentity(dataDir)
+	joinInvite := ""
+	if len(invite) > 0 {
+		joinInvite = invite[0]
+	}
+	security, err := loadSecurity(dataDir, joinInvite)
 	if err != nil {
 		return nil, err
 	}
 	if replication < 1 {
 		replication = 1
 	}
-	n := &Node{ID: id, Name: name, Address: strings.TrimRight(address, "/"), Store: store, Replication: replication, startedAt: time.Now().UTC(), client: &http.Client{Timeout: 12 * time.Second}, peers: make(map[string]Peer), peerFiles: make(map[string]map[string]bool), seeds: seeds}
+	validatedSeeds := make([]string, 0, len(seeds))
+	for _, seed := range seeds {
+		validated, validateErr := validatePeerURL(seed)
+		if validateErr != nil {
+			return nil, fmt.Errorf("seed %q: %w", seed, validateErr)
+		}
+		validatedSeeds = append(validatedSeeds, validated)
+	}
+	n := &Node{ID: nodeID(security.publicKey), Name: name, Address: strings.TrimRight(address, "/"), Store: store, Replication: replication, startedAt: time.Now().UTC(), client: &http.Client{Timeout: 12 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, privateKey: security.privateKey, publicKey: security.publicKey, meshKey: security.meshKey, adminToken: security.adminToken, newMesh: security.newMesh, MaxUpload: 1 << 30, MaxStorage: 10 << 30, peers: make(map[string]Peer), peerFiles: make(map[string]map[string]bool), seeds: validatedSeeds, seenNonces: make(map[string]time.Time), transfers: make(chan struct{}, 4)}
 	n.log("node", "Node started and local storage is ready")
 	return n, nil
-}
-
-func loadIdentity(dataDir string) (string, error) {
-	path := filepath.Join(dataDir, "node-id")
-	b, err := os.ReadFile(path)
-	if err == nil && strings.TrimSpace(string(b)) != "" {
-		return strings.TrimSpace(string(b)), nil
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
-	id := fmt.Sprintf("node-%d", time.Now().UnixNano())
-	if err := os.WriteFile(path, []byte(id+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	return id, nil
 }
 
 func (n *Node) log(kind, message string) {
@@ -135,7 +140,15 @@ func (n *Node) syncAll(ctx context.Context) {
 }
 
 func (n *Node) syncPeer(ctx context.Context, address string) {
+	validated, err := validatePeerURL(address)
+	if err != nil {
+		return
+	}
+	address = validated
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, address+"/api/manifest", nil)
+	if err := n.signPeerRequest(req); err != nil {
+		return
+	}
 	resp, err := n.client.Do(req)
 	if err != nil {
 		return
@@ -145,7 +158,7 @@ func (n *Node) syncPeer(ctx context.Context, address string) {
 		return
 	}
 	var manifest Manifest
-	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil || manifest.NodeID == n.ID {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&manifest); err != nil || manifest.NodeID == n.ID || !n.verifyManifest(manifest) {
 		return
 	}
 	n.rememberPeer(Peer{ID: manifest.NodeID, Name: manifest.Name, Address: address, LastSeen: time.Now().UTC(), Files: len(manifest.Files), Online: true})
@@ -164,7 +177,22 @@ func (n *Node) syncPeer(ctx context.Context, address string) {
 }
 
 func (n *Node) pullFile(ctx context.Context, address string, file FileRecord) {
+	_, used := n.Store.Stats()
+	limit := min(n.MaxUpload, n.MaxStorage-used)
+	if file.Size < 0 || file.Size > limit || limit <= 0 {
+		n.log("warning", fmt.Sprintf("Skipped %s because it exceeds this node's storage policy", file.Name))
+		return
+	}
+	select {
+	case n.transfers <- struct{}{}:
+		defer func() { <-n.transfers }()
+	default:
+		return
+	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, address+"/api/blobs/"+file.Hash, nil)
+	if err := n.signPeerRequest(req); err != nil {
+		return
+	}
 	resp, err := n.client.Do(req)
 	if err != nil {
 		return
@@ -173,7 +201,12 @@ func (n *Node) pullFile(ctx context.Context, address string, file FileRecord) {
 	if resp.StatusCode != http.StatusOK {
 		return
 	}
-	if _, added, err := n.Store.PutReplica(resp.Body, file); err == nil && added {
+	if record, added, err := n.Store.PutReplica(io.LimitReader(resp.Body, limit+1), file); err == nil && added {
+		if _, total := n.Store.Stats(); total > n.MaxStorage {
+			n.Store.Remove(record.Hash)
+			n.log("warning", fmt.Sprintf("Discarded %s because the storage quota was reached", file.Name))
+			return
+		}
 		n.log("sync", fmt.Sprintf("Replicated %s from %s", file.Name, address))
 	}
 }

@@ -44,7 +44,7 @@ func TestNodesReplicateAndRetainFileWhenSourceStops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	replica, err := NewNode("Replica", "", t.TempDir(), 2, nil)
+	replica, err := NewNode("Replica", "", t.TempDir(), 2, nil, source.Invite())
 	if err != nil {
 		t.Fatal(err)
 	}

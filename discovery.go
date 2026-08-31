@@ -30,7 +30,7 @@ func (n *Node) RunDiscovery(ctx context.Context) {
 	buf := make([]byte, 4096)
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-		count, _, err := conn.ReadFromUDP(buf)
+		count, source, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -38,8 +38,10 @@ func (n *Node) RunDiscovery(ctx context.Context) {
 			continue
 		}
 		var a announcement
-		if json.Unmarshal(buf[:count], &a) == nil && a.Protocol == "boxnet/1" && a.ID != n.ID {
-			n.rememberPeer(Peer{ID: a.ID, Name: a.Name, Address: a.Address, LastSeen: time.Now().UTC(), Online: true})
+		if json.Unmarshal(buf[:count], &a) == nil && a.ID != n.ID {
+			if address, valid := n.verifyAnnouncement(a, source.IP); valid {
+				n.rememberPeer(Peer{ID: a.ID, Name: a.Name, Address: address, LastSeen: time.Now().UTC(), Online: true})
+			}
 		}
 	}
 }
@@ -50,10 +52,10 @@ func (n *Node) announceLoop(ctx context.Context, address *net.UDPAddr) {
 		return
 	}
 	defer conn.Close()
-	payload, _ := json.Marshal(announcement{Protocol: "boxnet/1", ID: n.ID, Name: n.Name, Address: n.Address})
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for {
+		payload, _ := json.Marshal(n.signedAnnouncement())
 		_, _ = conn.Write(payload)
 		select {
 		case <-ctx.Done():

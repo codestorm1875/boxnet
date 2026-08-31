@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -115,10 +116,14 @@ func runTUICommand(ctx context.Context, node *Node, line string) (string, bool) 
 	case command == "", command == "refresh", command == "r":
 		return "State refreshed.", false
 	case command == "help", command == "h", command == "?":
-		return "Commands: add PATH · save NUMBER DESTINATION · sync · refresh · quit", false
+		return "Commands: add PATH · save NUMBER DESTINATION · sync · invite · token · refresh · quit", false
 	case command == "sync", command == "s":
 		go node.syncAll(ctx)
 		return "Peer synchronization started.", false
+	case command == "invite":
+		return "Mesh invitation (keep secret): " + node.Invite(), false
+	case command == "token":
+		return "Dashboard token (keep secret): " + node.adminToken, false
 	case command == "quit", command == "q", command == "exit":
 		return "", true
 	case strings.HasPrefix(command, "add "):
@@ -155,11 +160,25 @@ func publishLocal(node *Node, path string) (FileRecord, bool, error) {
 		return FileRecord{}, false, err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return FileRecord{}, false, err
+	}
+	_, used := node.Store.Stats()
+	if info.Size() > node.MaxUpload || info.Size() > node.MaxStorage-used {
+		return FileRecord{}, false, errors.New("file exceeds this node's storage policy")
+	}
 	mediaType := mime.TypeByExtension(filepath.Ext(path))
 	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
 	record, added, err := node.Store.Put(file, filepath.Base(path), mediaType, node.ID)
+	if err == nil && added {
+		if _, total := node.Store.Stats(); total > node.MaxStorage {
+			node.Store.Remove(record.Hash)
+			return FileRecord{}, false, errors.New("storage quota reached during publish")
+		}
+	}
 	if err == nil && added {
 		node.log("file", fmt.Sprintf("Published %s from terminal", record.Name))
 	}

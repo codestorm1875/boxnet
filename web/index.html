@@ -97,6 +97,18 @@
     </main>
   </div>
 
+  <dialog id="login-dialog">
+    <form class="dialog-card" id="login-form">
+      <div class="dialog-header"><div><h2>Unlock this node</h2><p>Enter the dashboard token shown in the node terminal.</p></div></div>
+      <div class="login-body">
+        <label for="login-token">Dashboard token</label>
+        <input id="login-token" type="password" autocomplete="current-password" spellcheck="false" required placeholder="Paste the 43-character token">
+        <p>The token stays in this browser tab and is never included in links.</p>
+      </div>
+      <div class="dialog-actions"><button class="primary-button" type="submit">Unlock dashboard</button></div>
+    </form>
+  </dialog>
+
   <dialog id="upload-dialog">
     <form method="dialog" class="dialog-card" id="upload-form">
       <div class="dialog-header"><div><h2>Publish a file</h2><p>Add content to this local mesh.</p></div><button class="icon-button" value="cancel" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
@@ -130,4 +142,3 @@
   <script src="/app.js"></script>
 </body>
 </html>
-
