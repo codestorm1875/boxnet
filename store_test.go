@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -50,11 +52,12 @@ func TestNodesReplicateAndRetainFileWhenSourceStops(t *testing.T) {
 	}
 	sourceHandler := source.Handler()
 	replica.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		request.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{replica.tlsLeaf}}
 		recorder := httptest.NewRecorder()
 		sourceHandler.ServeHTTP(recorder, request)
 		return recorder.Result(), nil
 	})
-	replica.syncPeer(context.Background(), "http://source")
+	replica.syncPeer(context.Background(), "https://source")
 
 	if _, ok := replica.Store.Get(record.Hash); !ok {
 		t.Fatal("replica did not receive file")

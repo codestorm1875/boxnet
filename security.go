@@ -231,7 +231,7 @@ func (n *Node) verifyAnnouncement(a announcement, source net.IP) (string, bool) 
 	if err != nil || !ed25519.Verify(publicKey, []byte(announcementMessage(a)), signature) {
 		return "", false
 	}
-	address, err := validatePeerURL(a.Address)
+	address, err := requireHTTPS(a.Address)
 	if err != nil {
 		return "", false
 	}

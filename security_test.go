@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,11 +13,11 @@ import (
 
 func TestIdentityAndMeshPersistSecurely(t *testing.T) {
 	dir := t.TempDir()
-	first, err := NewNode("First", "http://127.0.0.1:8080", dir, 2, nil)
+	first, err := NewNode("First", "https://127.0.0.1:8080", dir, 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewNode("Second Name", "http://127.0.0.1:8080", dir, 2, nil)
+	second, err := NewNode("Second Name", "https://127.0.0.1:8080", dir, 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +36,11 @@ func TestIdentityAndMeshPersistSecurely(t *testing.T) {
 }
 
 func TestSignedDiscoveryAndManifestRejectTampering(t *testing.T) {
-	node, err := NewNode("Signer", "http://127.0.0.1:8080", t.TempDir(), 2, nil)
+	node, err := NewNode("Signer", "https://127.0.0.1:8080", t.TempDir(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	member, err := NewNode("Verifier", "http://127.0.0.1:8081", t.TempDir(), 2, nil, node.Invite())
+	member, err := NewNode("Verifier", "https://127.0.0.1:8081", t.TempDir(), 2, nil, node.Invite())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,15 +63,15 @@ func TestSignedDiscoveryAndManifestRejectTampering(t *testing.T) {
 }
 
 func TestSignedPeerRequestAndReplayProtection(t *testing.T) {
-	mesh, err := NewNode("Mesh", "http://127.0.0.1:8080", t.TempDir(), 2, nil)
+	mesh, err := NewNode("Mesh", "https://127.0.0.1:8080", t.TempDir(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	peer, err := NewNode("Peer", "http://127.0.0.1:8081", t.TempDir(), 2, nil, mesh.Invite())
+	peer, err := NewNode("Peer", "https://127.0.0.1:8081", t.TempDir(), 2, nil, mesh.Invite())
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodGet, "http://mesh/api/manifest", nil)
+	request := httptest.NewRequest(http.MethodGet, "https://mesh/api/manifest", nil)
 	if err := peer.signPeerRequest(request); err != nil {
 		t.Fatal(err)
 	}
@@ -82,15 +84,15 @@ func TestSignedPeerRequestAndReplayProtection(t *testing.T) {
 }
 
 func TestForeignMeshAndMissingAdminTokenAreRejected(t *testing.T) {
-	node, err := NewNode("Protected", "http://127.0.0.1:8080", t.TempDir(), 2, nil)
+	node, err := NewNode("Protected", "https://127.0.0.1:8080", t.TempDir(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := NewNode("Foreign", "http://127.0.0.1:8081", t.TempDir(), 2, nil)
+	foreign, err := NewNode("Foreign", "https://127.0.0.1:8081", t.TempDir(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	peerRequest := httptest.NewRequest(http.MethodGet, "/api/manifest", nil)
+	peerRequest := httptest.NewRequest(http.MethodGet, "https://protected/api/manifest", nil)
 	_ = foreign.signPeerRequest(peerRequest)
 	peerResponse := httptest.NewRecorder()
 	node.Handler().ServeHTTP(peerResponse, peerRequest)
@@ -98,13 +100,13 @@ func TestForeignMeshAndMissingAdminTokenAreRejected(t *testing.T) {
 		t.Fatalf("foreign peer status=%d", peerResponse.Code)
 	}
 
-	adminRequest := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	adminRequest := httptest.NewRequest(http.MethodGet, "https://protected/api/status", nil)
 	adminResponse := httptest.NewRecorder()
 	node.Handler().ServeHTTP(adminResponse, adminRequest)
 	if adminResponse.Code != http.StatusUnauthorized {
 		t.Fatalf("missing admin token status=%d", adminResponse.Code)
 	}
-	adminRequest = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	adminRequest = httptest.NewRequest(http.MethodGet, "https://protected/api/status", nil)
 	adminRequest.Header.Set("Authorization", "Bearer "+node.adminToken)
 	adminResponse = httptest.NewRecorder()
 	node.Handler().ServeHTTP(adminResponse, adminRequest)
@@ -122,5 +124,26 @@ func TestPeerURLValidation(t *testing.T) {
 	}
 	if got, err := validatePeerURL("https://192.168.1.2:8443/"); err != nil || got != "https://192.168.1.2:8443" {
 		t.Fatalf("valid peer URL got=%q err=%v", got, err)
+	}
+}
+
+func TestTLSIsVersion13AndMeshScoped(t *testing.T) {
+	node, err := NewNode("TLS Node", "https://127.0.0.1:8080", t.TempDir(), 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := node.serverTLSConfig()
+	if config.MinVersion != tls.VersionTLS13 || config.ClientAuth != tls.VerifyClientCertIfGiven {
+		t.Fatalf("unexpected TLS policy: min=%x clientAuth=%v", config.MinVersion, config.ClientAuth)
+	}
+	if _, err := node.tlsLeaf.Verify(x509.VerifyOptions{Roots: node.tlsRoots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, DNSName: "127.0.0.1"}); err != nil {
+		t.Fatalf("node server certificate did not verify: %v", err)
+	}
+	foreign, err := NewNode("Foreign", "https://127.0.0.1:8081", t.TempDir(), 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := node.tlsLeaf.Verify(x509.VerifyOptions{Roots: foreign.tlsRoots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err == nil {
+		t.Fatal("certificate verified against a foreign mesh CA")
 	}
 }

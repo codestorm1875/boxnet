@@ -27,7 +27,7 @@ func (n *Node) Handler() http.Handler {
 	mux.HandleFunc("GET /api/peers", n.adminOnly(func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, n.Peers()) }))
 	mux.HandleFunc("GET /api/events", n.adminOnly(func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, n.Events()) }))
 	mux.HandleFunc("GET /api/security", n.adminOnly(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]any{"nodeId": n.ID, "invite": n.Invite(), "signedProtocol": true, "maxUpload": n.MaxUpload, "maxStorage": n.MaxStorage})
+		writeJSON(w, map[string]any{"nodeId": n.ID, "invite": n.Invite(), "signedProtocol": true, "tlsVersion": "1.3", "mutualTLS": true, "maxUpload": n.MaxUpload, "maxStorage": n.MaxStorage})
 	}))
 	mux.HandleFunc("GET /api/manifest", n.peerOnly(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, n.signedManifest())
@@ -147,7 +147,7 @@ func securityHeaders(next http.Handler) http.Handler {
 
 func (n *Node) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !n.verifyAdmin(r) {
+		if r.TLS == nil || !n.verifyAdmin(r) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="boxnet-dashboard"`)
 			writeError(w, http.StatusUnauthorized, "Dashboard token required")
 			return
@@ -158,7 +158,7 @@ func (n *Node) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 
 func (n *Node) peerOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !n.verifyPeerRequest(r) {
+		if !n.verifyTLSPeer(r) || !n.verifyPeerRequest(r) {
 			writeError(w, http.StatusUnauthorized, "Signed mesh membership required")
 			return
 		}

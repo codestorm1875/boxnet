@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,27 +15,30 @@ import (
 )
 
 type Node struct {
-	ID          string
-	Name        string
-	Address     string
-	Store       *Store
-	Replication int
-	startedAt   time.Time
-	client      *http.Client
-	privateKey  ed25519.PrivateKey
-	publicKey   ed25519.PublicKey
-	meshKey     []byte
-	adminToken  string
-	newMesh     bool
-	MaxUpload   int64
-	MaxStorage  int64
-	mu          sync.RWMutex
-	peers       map[string]Peer
-	peerFiles   map[string]map[string]bool
-	events      []Event
-	seeds       []string
-	seenNonces  map[string]time.Time
-	transfers   chan struct{}
+	ID             string
+	Name           string
+	Address        string
+	Store          *Store
+	Replication    int
+	startedAt      time.Time
+	client         *http.Client
+	privateKey     ed25519.PrivateKey
+	publicKey      ed25519.PublicKey
+	meshKey        []byte
+	adminToken     string
+	newMesh        bool
+	MaxUpload      int64
+	MaxStorage     int64
+	mu             sync.RWMutex
+	peers          map[string]Peer
+	peerFiles      map[string]map[string]bool
+	events         []Event
+	seeds          []string
+	seenNonces     map[string]time.Time
+	transfers      chan struct{}
+	tlsCertificate tls.Certificate
+	tlsLeaf        *x509.Certificate
+	tlsRoots       *x509.CertPool
 }
 
 func NewNode(name, address, dataDir string, replication int, seeds []string, invite ...string) (*Node, error) {
@@ -52,15 +57,27 @@ func NewNode(name, address, dataDir string, replication int, seeds []string, inv
 	if replication < 1 {
 		replication = 1
 	}
+	normalizedAddress := ""
+	if address != "" {
+		normalizedAddress, err = requireHTTPS(address)
+		if err != nil {
+			return nil, fmt.Errorf("advertise address: %w", err)
+		}
+	}
+	tlsMaterial, err := createTLSMaterial(dataDir, normalizedAddress, security)
+	if err != nil {
+		return nil, fmt.Errorf("TLS identity: %w", err)
+	}
 	validatedSeeds := make([]string, 0, len(seeds))
 	for _, seed := range seeds {
-		validated, validateErr := validatePeerURL(seed)
+		validated, validateErr := requireHTTPS(seed)
 		if validateErr != nil {
 			return nil, fmt.Errorf("seed %q: %w", seed, validateErr)
 		}
 		validatedSeeds = append(validatedSeeds, validated)
 	}
-	n := &Node{ID: nodeID(security.publicKey), Name: name, Address: strings.TrimRight(address, "/"), Store: store, Replication: replication, startedAt: time.Now().UTC(), client: &http.Client{Timeout: 12 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, privateKey: security.privateKey, publicKey: security.publicKey, meshKey: security.meshKey, adminToken: security.adminToken, newMesh: security.newMesh, MaxUpload: 1 << 30, MaxStorage: 10 << 30, peers: make(map[string]Peer), peerFiles: make(map[string]map[string]bool), seeds: validatedSeeds, seenNonces: make(map[string]time.Time), transfers: make(chan struct{}, 4)}
+	clientTLS := &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: tlsMaterial.roots, Certificates: []tls.Certificate{tlsMaterial.certificate}}
+	n := &Node{ID: nodeID(security.publicKey), Name: name, Address: normalizedAddress, Store: store, Replication: replication, startedAt: time.Now().UTC(), client: &http.Client{Timeout: 12 * time.Second, Transport: &http.Transport{TLSClientConfig: clientTLS}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, privateKey: security.privateKey, publicKey: security.publicKey, meshKey: security.meshKey, adminToken: security.adminToken, newMesh: security.newMesh, MaxUpload: 1 << 30, MaxStorage: 10 << 30, peers: make(map[string]Peer), peerFiles: make(map[string]map[string]bool), seeds: validatedSeeds, seenNonces: make(map[string]time.Time), transfers: make(chan struct{}, 4), tlsCertificate: tlsMaterial.certificate, tlsLeaf: tlsMaterial.leaf, tlsRoots: tlsMaterial.roots}
 	n.log("node", "Node started and local storage is ready")
 	return n, nil
 }
@@ -140,7 +157,7 @@ func (n *Node) syncAll(ctx context.Context) {
 }
 
 func (n *Node) syncPeer(ctx context.Context, address string) {
-	validated, err := validatePeerURL(address)
+	validated, err := requireHTTPS(address)
 	if err != nil {
 		return
 	}

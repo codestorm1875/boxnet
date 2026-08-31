@@ -10,7 +10,7 @@ import (
 )
 
 func TestTUIFileWorkflow(t *testing.T) {
-	node, err := NewNode("Terminal Node", "http://localhost:8080", t.TempDir(), 2, nil)
+	node, err := NewNode("Terminal Node", "https://localhost:8080", t.TempDir(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestTUIFileWorkflow(t *testing.T) {
 }
 
 func TestTUIRendersAndQuits(t *testing.T) {
-	node, err := NewNode("Terminal Node", "http://localhost:8080", t.TempDir(), 2, nil)
+	node, err := NewNode("Terminal Node", "https://localhost:8080", t.TempDir(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestTUIHelpers(t *testing.T) {
 }
 
 func TestTUICommandsAreTolerant(t *testing.T) {
-	node, err := NewNode("Terminal Node", "http://localhost:8080", t.TempDir(), 2, nil)
+	node, err := NewNode("Terminal Node", "https://localhost:8080", t.TempDir(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

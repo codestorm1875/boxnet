@@ -20,7 +20,7 @@ var execCommand = exec.Command
 func main() {
 	name := flag.String("name", "Home Node", "human-readable node name")
 	listen := flag.String("listen", ":8080", "HTTP listen address")
-	advertise := flag.String("advertise", "http://localhost:8080", "URL other nodes use to reach this node")
+	advertise := flag.String("advertise", "https://localhost:8080", "HTTPS URL other nodes use to reach this node")
 	data := flag.String("data", "./box-data", "persistent data directory")
 	replicas := flag.Int("replicas", 2, "desired number of copies across the mesh")
 	peerList := flag.String("peers", "", "comma-separated seed peer URLs")
@@ -67,7 +67,7 @@ func main() {
 	go node.RunDiscovery(ctx)
 	go node.RunSync(ctx)
 
-	server := &http.Server{Addr: *listen, Handler: node.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: *listen, Handler: node.Handler(), TLSConfig: node.serverTLSConfig(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	serverErrors := make(chan error, 1)
 	go func() {
 		<-ctx.Done()
@@ -76,7 +76,7 @@ func main() {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 			serverErrors <- err
 		}
 	}()
