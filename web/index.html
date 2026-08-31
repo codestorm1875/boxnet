@@ -3,71 +3,130 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0c0d0f">
-  <title>Boxnet</title>
+  <meta name="theme-color" content="#090b0f">
+  <meta name="color-scheme" content="light dark">
+  <title>Boxnet · Your local mesh</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
-  <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="/" aria-label="Boxnet home">
-        <span class="brand-mark"><span></span><span></span><span></span></span>
+<body class="booting">
+  <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+    <canvas id="mesh-canvas" aria-hidden="true"></canvas>
+    <header class="auth-topbar">
+      <a class="auth-brand" href="/" aria-label="Boxnet home">
+        <span class="signal-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
         <span>boxnet</span>
       </a>
+      <span class="encrypted-badge"><svg><use href="#i-lock"/></svg>TLS 1.3 encrypted</span>
+    </header>
+
+    <div class="auth-layout">
+      <div class="auth-story">
+        <div class="signal-kicker"><span></span>INDEPENDENT BY DESIGN</div>
+        <h1>Your network.<br><em>No cloud required.</em></h1>
+        <p>Files move directly between computers you trust—and remain available when the outside world disappears.</p>
+        <div class="auth-capabilities" aria-label="Boxnet capabilities">
+          <span><svg><use href="#i-radar"/></svg>Peer discovery</span>
+          <span><svg><use href="#i-shield-check"/></svg>Verified replicas</span>
+          <span><svg><use href="#i-wifi-off"/></svg>Offline ready</span>
+        </div>
+      </div>
+
+      <div class="auth-panel-wrap">
+        <div class="auth-panel">
+          <div class="auth-panel-icon"><svg><use href="#i-fingerprint"/></svg><span></span></div>
+          <div class="auth-copy">
+            <span class="auth-step">NODE ACCESS</span>
+            <h2 id="auth-title">Unlock your node</h2>
+            <p>Authenticate locally to open the control room.</p>
+          </div>
+          <form id="login-form" novalidate>
+            <label for="login-token">Dashboard token</label>
+            <div class="token-field">
+              <svg><use href="#i-key"/></svg>
+              <input id="login-token" type="password" autocomplete="current-password" spellcheck="false" required placeholder="Paste your access token">
+              <button type="button" id="toggle-token" aria-label="Show token" title="Show token"><svg><use href="#i-eye"/></svg></button>
+            </div>
+            <div class="auth-error" id="auth-error" role="alert" aria-live="polite"></div>
+            <button class="auth-submit" id="auth-submit" type="submit">
+              <span>Enter control room</span><svg><use href="#i-arrow-right"/></svg><i class="button-spinner" aria-hidden="true"></i>
+            </button>
+          </form>
+          <button class="auth-help" id="auth-help" type="button"><svg><use href="#i-terminal"/></svg>Where is my token?<svg class="chevron"><use href="#i-chevron"/></svg></button>
+          <div class="auth-help-copy" id="auth-help-copy" hidden>
+            Run <code>token</code> in the Boxnet TUI, or open <code>admin.token</code> inside this node's data directory.
+          </div>
+          <div class="auth-trust"><svg><use href="#i-lock"/></svg><span><strong>Local authentication</strong>Your token stays in this browser tab.</span></div>
+        </div>
+        <p class="auth-footnote">One node. Many peers. No central authority.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="shell" id="app-shell" aria-hidden="true">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="Boxnet overview">
+        <span class="signal-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>boxnet</span>
+      </a>
+      <div class="nav-label">Control room</div>
       <nav aria-label="Main navigation">
-        <a class="nav-item active" href="#overview"><svg><use href="#i-grid"/></svg>Overview</a>
-        <a class="nav-item" href="#files"><svg><use href="#i-file"/></svg>Files <span class="nav-count" id="nav-file-count">0</span></a>
-        <a class="nav-item" href="#peers"><svg><use href="#i-nodes"/></svg>Peers <span class="nav-count" id="nav-peer-count">0</span></a>
-        <a class="nav-item" href="#activity"><svg><use href="#i-activity"/></svg>Activity</a>
+        <a class="nav-item active" href="#overview"><svg><use href="#i-grid"/></svg><span>Overview</span></a>
+        <a class="nav-item" href="#files"><svg><use href="#i-files"/></svg><span>Files</span><b class="nav-count" id="nav-file-count">0</b></a>
+        <a class="nav-item" href="#peers"><svg><use href="#i-network"/></svg><span>Peers</span><b class="nav-count" id="nav-peer-count">0</b></a>
+        <a class="nav-item" href="#activity"><svg><use href="#i-pulse"/></svg><span>Activity</span></a>
       </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="secure-channel"><svg><use href="#i-shield-check"/></svg><div><strong>Secure channel</strong><span>TLS 1.3 · ECDSA P-256</span></div></div>
       <div class="sidebar-footer">
         <div class="node-mini">
-          <span class="status-dot" id="side-dot"></span>
+          <span class="status-orb" id="side-dot"><i></i></span>
           <div><strong id="side-name">Loading node</strong><span id="side-status">Connecting…</span></div>
+          <button class="sidebar-action" id="logout-button" aria-label="Lock dashboard" title="Lock dashboard"><svg><use href="#i-log-out"/></svg></button>
         </div>
-        <p>Local-first mesh<br><span id="node-id-short">—</span></p>
+        <p id="node-id-short">—</p>
       </div>
     </aside>
 
     <main>
       <header class="topbar">
         <button class="mobile-menu" aria-label="Open navigation"><svg><use href="#i-menu"/></svg></button>
-        <div class="crumb"><span>Network</span><b>/</b><strong id="crumb-name">This node</strong></div>
+        <div class="crumb"><span>Mesh</span><svg><use href="#i-chevron"/></svg><strong id="crumb-name">This node</strong></div>
         <div class="top-actions">
+          <div class="last-updated"><span></span><b id="last-updated">Waiting for signal</b></div>
           <button class="icon-button" id="refresh-button" aria-label="Refresh data" title="Refresh"><svg><use href="#i-refresh"/></svg></button>
-          <button class="primary-button" data-open-upload><svg><use href="#i-upload"/></svg>Publish file</button>
+          <button class="primary-button magnetic" data-open-upload><svg><use href="#i-upload"/></svg><span>Publish file</span></button>
         </div>
       </header>
 
       <div class="content">
-        <section class="page-heading" id="overview">
+        <section class="page-heading reveal" id="overview">
           <div>
-            <div class="eyebrow">LOCAL MESH</div>
-            <h1>Network overview</h1>
-            <p>Files stay available across the computers you trust.</p>
+            <div class="eyebrow"><span></span>LIVE MESH OVERVIEW</div>
+            <h1>Everything, in reach.</h1>
+            <p>See what is stored, connected, and protected across your local network.</p>
           </div>
           <div class="health-pill loading" id="health-pill"><span></span><b>Connecting</b></div>
         </section>
 
-        <section class="metrics" aria-label="Network metrics">
-          <article><div class="metric-label">Files available <span title="Unique files stored on this node">?</span></div><strong id="metric-files">—</strong><small id="metric-size">Calculating storage</small></article>
-          <article><div class="metric-label">Peers online <span title="Nodes seen in the last 12 seconds">?</span></div><strong id="metric-peers">—</strong><small id="metric-known">Discovering network</small></article>
-          <article><div class="metric-label">Replica coverage <span title="Available nodes compared with your replica target">?</span></div><strong id="metric-coverage">—</strong><small id="metric-target">Target not loaded</small></article>
-          <article><div class="metric-label">Node uptime <span title="Time since this node started">?</span></div><strong id="metric-uptime">—</strong><small>Operating independently</small></article>
+        <section class="metrics reveal" aria-label="Network metrics">
+          <article style="--order:0"><div class="metric-top"><span class="metric-icon violet"><svg><use href="#i-files"/></svg></span><div class="metric-label">Files available</div></div><strong id="metric-files">—</strong><small id="metric-size">Calculating storage</small><i class="metric-line"></i></article>
+          <article style="--order:1"><div class="metric-top"><span class="metric-icon blue"><svg><use href="#i-network"/></svg></span><div class="metric-label">Peers online</div></div><strong id="metric-peers">—</strong><small id="metric-known">Discovering network</small><i class="metric-line"></i></article>
+          <article style="--order:2"><div class="metric-top"><span class="metric-icon green"><svg><use href="#i-shield-check"/></svg></span><div class="metric-label">Replica coverage</div></div><strong id="metric-coverage">—</strong><small id="metric-target">Target not loaded</small><i class="metric-line"></i></article>
+          <article style="--order:3"><div class="metric-top"><span class="metric-icon amber"><svg><use href="#i-clock"/></svg></span><div class="metric-label">Node uptime</div></div><strong id="metric-uptime">—</strong><small>Operating independently</small><i class="metric-line"></i></article>
         </section>
 
-        <section class="notice" id="network-notice">
-          <div class="notice-icon"><svg><use href="#i-shield"/></svg></div>
-          <div><strong id="notice-title">Establishing local network</strong><p id="notice-copy">Looking for nearby nodes and checking replica availability.</p></div>
-          <button class="text-button" id="sync-button">Sync now</button>
+        <section class="notice reveal" id="network-notice">
+          <div class="notice-signal"><svg><use href="#i-shield-check"/></svg><i></i></div>
+          <div><span class="notice-label">RESILIENCE STATUS</span><strong id="notice-title">Establishing local network</strong><p id="notice-copy">Looking for nearby nodes and checking replica availability.</p></div>
+          <button class="sync-button" id="sync-button"><svg><use href="#i-refresh"/></svg><span>Sync now</span></button>
         </section>
 
-        <section class="section" id="files">
+        <section class="section reveal" id="files">
           <div class="section-header">
-            <div><h2>Shared files</h2><p>Content available from this node</p></div>
+            <div><span class="section-kicker">CONTENT</span><h2>Shared files</h2><p>Verified content available from this node</p></div>
             <div class="section-actions">
-              <label class="search"><svg><use href="#i-search"/></svg><input id="file-search" type="search" placeholder="Filter files…" aria-label="Filter files"></label>
-              <button class="secondary-button" data-open-upload><svg><use href="#i-plus"/></svg>Add file</button>
+              <label class="search"><svg><use href="#i-search"/></svg><input id="file-search" type="search" placeholder="Filter files…" aria-label="Filter files"><kbd>/</kbd></label>
+              <button class="secondary-button" data-open-upload><svg><use href="#i-plus"/></svg><span>Add file</span></button>
             </div>
           </div>
           <div class="table-wrap">
@@ -76,68 +135,71 @@
               <tbody id="file-list"><tr class="skeleton-row"><td colspan="5"><span></span></td></tr><tr class="skeleton-row"><td colspan="5"><span></span></td></tr></tbody>
             </table>
             <div class="empty-state" id="file-empty" hidden>
-              <div class="empty-icon"><svg><use href="#i-file-plus"/></svg></div>
-              <h3>No files published yet</h3><p>Add the first file to this mesh. It will be stored locally and copied to peers when they are available.</p>
-              <button class="primary-button" data-open-upload>Publish your first file</button>
+              <div class="empty-visual"><span><svg><use href="#i-file-plus"/></svg></span><i></i><i></i></div>
+              <h3>The mesh is ready for its first file</h3><p>Publish something here and Boxnet will verify it, store it locally, and copy it to trusted peers.</p>
+              <button class="primary-button" data-open-upload><svg><use href="#i-upload"/></svg><span>Publish first file</span></button>
             </div>
           </div>
         </section>
 
-        <div class="lower-grid">
+        <div class="lower-grid reveal">
           <section class="section" id="peers">
-            <div class="section-header"><div><h2>Peers</h2><p>Computers in this mesh</p></div><span class="section-badge" id="peer-badge">0 online</span></div>
-            <div class="peer-list" id="peer-list"><div class="inline-loading">Discovering nearby nodes…</div></div>
+            <div class="section-header"><div><span class="section-kicker">TOPOLOGY</span><h2>Nearby peers</h2><p>Trusted computers in this mesh</p></div><span class="section-badge" id="peer-badge"><i></i>0 online</span></div>
+            <div class="peer-list" id="peer-list"><div class="inline-loading"><span></span>Listening for peer signals…</div></div>
           </section>
           <section class="section" id="activity">
-            <div class="section-header"><div><h2>Recent activity</h2><p>Changes on this node</p></div></div>
-            <div class="activity-list" id="activity-list"><div class="inline-loading">Loading activity…</div></div>
+            <div class="section-header"><div><span class="section-kicker">EVENT STREAM</span><h2>Recent activity</h2><p>What changed on this node</p></div><span class="live-badge"><i></i>LIVE</span></div>
+            <div class="activity-list" id="activity-list"><div class="inline-loading"><span></span>Opening event stream…</div></div>
           </section>
         </div>
       </div>
     </main>
   </div>
 
-  <dialog id="login-dialog">
-    <form class="dialog-card" id="login-form">
-      <div class="dialog-header"><div><h2>Unlock this node</h2><p>Enter the dashboard token shown in the node terminal.</p></div></div>
-      <div class="login-body">
-        <label for="login-token">Dashboard token</label>
-        <input id="login-token" type="password" autocomplete="current-password" spellcheck="false" required placeholder="Paste the 43-character token">
-        <p>The token stays in this browser tab and is never included in links.</p>
-      </div>
-      <div class="dialog-actions"><button class="primary-button" type="submit">Unlock dashboard</button></div>
-    </form>
-  </dialog>
-
   <dialog id="upload-dialog">
     <form method="dialog" class="dialog-card" id="upload-form">
-      <div class="dialog-header"><div><h2>Publish a file</h2><p>Add content to this local mesh.</p></div><button class="icon-button" value="cancel" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+      <div class="dialog-header"><div class="dialog-title-icon"><svg><use href="#i-upload"/></svg></div><div><span class="section-kicker">PUBLISH TO MESH</span><h2>Share a file</h2><p>Boxnet verifies every byte before replication.</p></div><button class="icon-button dialog-close" value="cancel" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
       <label class="drop-zone" id="drop-zone">
         <input type="file" id="file-input" name="file" required>
-        <span class="drop-icon"><svg><use href="#i-upload"/></svg></span>
-        <strong id="drop-title">Drop a file here or choose one</strong>
-        <span id="drop-copy">Up to 1 GB · verified with SHA-256</span>
+        <span class="drop-rings"><i></i><i></i><b><svg><use href="#i-upload"/></svg></b></span>
+        <strong id="drop-title">Drop a file into the mesh</strong>
+        <span id="drop-copy">or click to browse · up to 1 GB</span>
+        <small>SHA-256 verified end to end</small>
       </label>
-      <div class="upload-progress" id="upload-progress" hidden><div><span>Publishing</span><b id="progress-value">0%</b></div><progress max="100" value="0"></progress></div>
-      <div class="dialog-actions"><button class="secondary-button" value="cancel">Cancel</button><button class="primary-button" id="publish-button" type="submit">Publish file</button></div>
+      <div class="upload-progress" id="upload-progress" hidden><div><span>Publishing to local node</span><b id="progress-value">0%</b></div><progress max="100" value="0"></progress></div>
+      <div class="dialog-actions"><button class="secondary-button" value="cancel">Cancel</button><button class="primary-button" id="publish-button" type="submit"><span>Publish file</span><svg><use href="#i-arrow-right"/></svg></button></div>
     </form>
   </dialog>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><span class="toast-icon"><svg><use href="#i-check"/></svg></span><span id="toast-copy"></span></div>
 
   <svg class="icon-sprite" aria-hidden="true">
-    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
-    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5M9 13h6M9 17h6"/></symbol>
-    <symbol id="i-nodes" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><path d="m10 7-3.5 8M14 7l3.5 8M8 18h8"/></symbol>
-    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.5-7 5 14 2.5-7h4"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-files" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5zM14 2v6h6M12 12v6M9 15h6"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="2"/><rect x="2" y="16" width="6" height="6" rx="2"/><rect x="16" y="16" width="6" height="6" rx="2"/><path d="M12 8v4M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2.5-7 5 14 2.5-7h4"/></symbol>
     <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18 10a7 7 0 0 0-12-3l-2 4M6 14a7 7 0 0 0 12 3l2-4"/></symbol>
     <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 15v5h16v-5"/></symbol>
-    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/><path d="m9 12 2 2 4-5"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/><path d="m9 12 2 2 4-5"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-    <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6zM14 2v5h5M9 14h6M12 11v6"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+    <symbol id="i-log-out" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></symbol>
+    <symbol id="i-fingerprint" viewBox="0 0 24 24"><path d="M12 11a2 2 0 0 0-2 2c0 3-1 5-2 6M14 19c1-2 1-4 1-6a3 3 0 0 0-6 0M18 18c.5-2 .7-4 .5-6a6.5 6.5 0 0 0-13 1c0 2-.3 3-1 4M4 8a9 9 0 0 1 16 0M12 22c1-2 1-3 1-5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M15 8l3 3M17 6l2 2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="m3 3 18 18M10.6 6.2A10 10 0 0 1 12 6c6.5 0 10 6 10 6a16 16 0 0 1-2.2 3M6.5 6.5C3.5 8.3 2 12 2 12s3.5 6 10 6a9 9 0 0 0 3-.5"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+    <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12 19 5M12 3v2M3 12h2"/></symbol>
+    <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="m2 2 20 20M8.5 8.5A11 11 0 0 1 20 10M5 10a11 11 0 0 1 1.5-1M2 6a16 16 0 0 1 18-1M9 15a4 4 0 0 1 6 0M12 19h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
   </svg>
   <script src="/app.js"></script>
 </body>

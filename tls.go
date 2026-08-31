@@ -1,7 +1,8 @@
 package main
 
 import (
-	"crypto/ed25519"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -28,11 +29,12 @@ type tlsMaterial struct {
 }
 
 func createTLSMaterial(dataDir, address string, security *nodeSecurity) (*tlsMaterial, error) {
-	caMAC := hmac.New(sha256.New, security.meshKey)
-	_, _ = caMAC.Write([]byte("boxnet/tls/ca/v1"))
-	caPrivate := ed25519.NewKeyFromSeed(caMAC.Sum(nil))
-	caPublic := caPrivate.Public().(ed25519.PublicKey)
-	caFingerprint := sha256.Sum256(caPublic)
+	caPrivate := deriveP256Key(security.meshKey, "boxnet/tls/ca/v2")
+	caPublicDER, err := x509.MarshalPKIXPublicKey(&caPrivate.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	caFingerprint := sha256.Sum256(caPublicDER)
 	caTemplate := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{Organization: []string{"Boxnet"}, CommonName: "Boxnet Mesh " + hex.EncodeToString(caFingerprint[:6])},
@@ -43,7 +45,7 @@ func createTLSMaterial(dataDir, address string, security *nodeSecurity) (*tlsMat
 		IsCA:                  true,
 		SubjectKeyId:          caFingerprint[:20],
 	}
-	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, caPublic, caPrivate)
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caPrivate.PublicKey, caPrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +67,7 @@ func createTLSMaterial(dataDir, address string, security *nodeSecurity) (*tlsMat
 		}
 	}
 	identityHash := sha256.Sum256(security.publicKey)
+	leafPrivate := deriveP256Key(security.privateKey.Seed(), "boxnet/tls/node/v2")
 	serial := new(big.Int).SetBytes(identityHash[:16])
 	leafTemplate := &x509.Certificate{
 		SerialNumber: serial,
@@ -77,7 +80,7 @@ func createTLSMaterial(dataDir, address string, security *nodeSecurity) (*tlsMat
 		IPAddresses:  ipAddresses,
 		SubjectKeyId: identityHash[:20],
 	}
-	leafDER, err := x509.CreateCertificate(rand.Reader, leafTemplate, caCertificate, security.publicKey, caPrivate)
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTemplate, caCertificate, &leafPrivate.PublicKey, caPrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +88,22 @@ func createTLSMaterial(dataDir, address string, security *nodeSecurity) (*tlsMat
 	if err != nil {
 		return nil, err
 	}
-	certificate := tls.Certificate{Certificate: [][]byte{leafDER, caDER}, PrivateKey: security.privateKey, Leaf: leaf}
+	certificate := tls.Certificate{Certificate: [][]byte{leafDER, caDER}, PrivateKey: leafPrivate, Leaf: leaf}
 	roots := x509.NewCertPool()
 	roots.AddCert(caCertificate)
 	return &tlsMaterial{certificate: certificate, leaf: leaf, ca: caCertificate, roots: roots}, nil
+}
+
+func deriveP256Key(secret []byte, label string) *ecdsa.PrivateKey {
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(label))
+	curve := elliptic.P256()
+	orderMinusOne := new(big.Int).Sub(curve.Params().N, big.NewInt(1))
+	d := new(big.Int).SetBytes(mac.Sum(nil))
+	d.Mod(d, orderMinusOne)
+	d.Add(d, big.NewInt(1))
+	x, y := curve.ScalarBaseMult(d.Bytes())
+	return &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: curve, X: x, Y: y}, D: d}
 }
 
 func appendUniqueIP(values []net.IP, candidate net.IP) []net.IP {
@@ -114,8 +129,7 @@ func (n *Node) verifyTLSPeer(request *http.Request) bool {
 		return false
 	}
 	leaf := request.TLS.PeerCertificates[0]
-	publicKey, ok := leaf.PublicKey.(ed25519.PublicKey)
-	if !ok || nodeID(publicKey) != request.Header.Get("X-Boxnet-ID") {
+	if leaf.Subject.CommonName != request.Header.Get("X-Boxnet-ID") {
 		return false
 	}
 	intermediates := x509.NewCertPool()

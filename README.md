@@ -112,7 +112,7 @@ The binary serves both the API and dashboard. Useful flags:
 
 1. A node broadcasts a signed `boxnet/2` presence message to `239.255.67.89:9797` every three seconds.
 2. Nodes validate the sender address, Ed25519 identity, mesh-membership proof, timestamp, and signature.
-3. Nodes establish TLS 1.3 using certificates issued by their mesh-specific CA. Peer endpoints require a mutually authenticated client certificate.
+3. Nodes establish TLS 1.3 using browser-compatible ECDSA P-256 certificates issued by their mesh-specific CA. Peer endpoints require a mutually authenticated client certificate.
 4. Authorized peers exchange signed manifests over authenticated `GET /api/manifest` requests. Timestamped, one-use nonces prevent request replay.
 5. A node requests missing blobs through authenticated `GET /api/blobs/{sha256}` calls.
 6. The received bytes are hashed before they are committed to local storage.

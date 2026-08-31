@@ -4,7 +4,7 @@
 
 - Node identities are persistent Ed25519 key pairs; the node ID is the SHA-256 fingerprint of the public key.
 - Network traffic requires TLS 1.3. TLS 1.2 and older versions are refused.
-- Every mesh derives an isolated Ed25519 certificate authority from its 256-bit invitation. Each node receives a CA-issued two-year certificate tied to its identity.
+- Every mesh derives an isolated ECDSA P-256 certificate authority from its 256-bit invitation. Each node receives a browser-compatible CA-issued two-year certificate tied to its Ed25519 application identity.
 - Peer API routes require a valid mesh client certificate in addition to the signed application request. Dashboard clients use the same encrypted listener without requiring a client certificate.
 - A 256-bit mesh invitation establishes membership. It is stored with owner-only filesystem permissions.
 - Discovery announcements and manifests are signed and expire after 90 seconds.
